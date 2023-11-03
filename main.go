@@ -1,20 +1,37 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/joho/godotenv"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/paymentintent"
-	//"github.com/stripe/stripe-go/v76/customer"
+	"io"
 	"log"
 	"net/http"
+	"os"
 )
 
+func init() {
+	if err := godotenv.Load(); err != nil {
+		log.Print("No .env file found")
+	}
+}
+
 func main() {
+	
+	stripeKey, exists := os.LookupEnv("STRIPE_KEY")
+	if !exists { 
+		log.Print("There is no Stripe key in .env file") 
+	}
+
+	stripe.Key = stripeKey
+
 	http.HandleFunc("/about", handleAbout)
 	http.HandleFunc("/create-payment-intent", handleCreatePaymentIntent)
 	
-	err := http.ListenAndServe("localhost:4242", nil) // run the server
+	err := http.ListenAndServe(":4242", nil) // run the server
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -22,7 +39,7 @@ func main() {
 
 func handleAbout(w http.ResponseWriter, r *http.Request) {
 	
-	response := []byte("Test server built in Go")
+	response := []byte("Test shop server working with Stripe API")
 	_, err := w.Write(response)
 	if err != nil {
 		log.Println(err)
@@ -69,7 +86,25 @@ func handleCreatePaymentIntent(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
-	fmt.Println(paymentIntent.ClientSecret)
+
+	var response struct {
+		ClientSecret string `json:"clientSecret"`
+	}
+
+	response.ClientSecret = paymentIntent.ClientSecret
+
+	var buf bytes.Buffer
+	err = json.NewEncoder(&buf).Encode(response)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	_, err = io.Copy(w, &buf)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 func calculateOrderAmount(productId string) int64 {
